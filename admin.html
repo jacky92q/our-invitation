@@ -30,6 +30,42 @@
       <button type="submit" class="btn btn--solid" id="loginSubmit">로그인</button>
     </form>
     <p class="gate__note" id="gateNote"></p>
+
+    <!-- Firebase 미설정일 때만 표시되는 설정 도우미 -->
+    <div class="setup" id="setup" hidden>
+      <button type="button" class="setup__toggle" id="setupToggle">설정 도우미 열기</button>
+
+      <div class="setup__body" id="setupBody" hidden>
+        <ol class="setup__steps">
+          <li><b>console.firebase.google.com</b> 접속 → <b>프로젝트 만들기</b></li>
+          <li>왼쪽 <b>빌드 &gt; Firestore Database</b> → <b>데이터베이스 만들기</b> → 위치 <b>asia-northeast3(서울)</b></li>
+          <li>왼쪽 <b>빌드 &gt; Authentication</b> → <b>시작하기</b> → <b>이메일/비밀번호</b> 사용 설정 →
+              <b>Users 탭 &gt; 사용자 추가</b> 로 관리자 계정 만들기</li>
+          <li><b>⚙️ 프로젝트 설정 &gt; 내 앱 &gt; &lt;/&gt;(웹)</b> 으로 앱 등록 → 나오는
+              <b>firebaseConfig</b> 코드 복사</li>
+          <li>아래에 붙여넣고 <b>코드 만들기</b> → 만들어진 내용을 <b>config.js</b> 의 firebase 부분에 붙여넣고 커밋</li>
+          <li>마지막으로 Firestore <b>규칙</b> 탭에 SETUP.md 의 보안 규칙을 붙여넣고 <b>게시</b></li>
+        </ol>
+
+        <label class="field">
+          <span class="field__label">firebaseConfig 붙여넣기</span>
+          <textarea id="setupInput" rows="8" placeholder="const firebaseConfig = {&#10;  apiKey: &quot;AIza...&quot;,&#10;  authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;,&#10;  ...&#10;};"></textarea>
+        </label>
+        <button type="button" class="btn btn--solid setup__make" id="setupMake">코드 만들기</button>
+
+        <div id="setupResult" hidden>
+          <p class="setup__hint">
+            아래 내용을 복사해서 저장소의 <b>config.js</b> 맨 위 <b>firebase: { … }</b> 부분과 통째로 바꿔주세요.
+          </p>
+          <pre class="setup__code" id="setupOutput"></pre>
+          <button type="button" class="btn btn--ghost" id="setupCopy">복사하기</button>
+          <p class="setup__hint">
+            GitHub 저장소 → config.js → 연필 아이콘(Edit) → 붙여넣기 → Commit changes →
+            1~2분 뒤 이 페이지를 새로고침하면 로그인 화면이 열립니다.
+          </p>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 

@@ -50,7 +50,7 @@
           fields: [
             { path: 'cover.image', label: '표지 사진 주소', type: 'text', help: '세로 3:4 비율을 권장합니다.' },
             { path: 'cover.label', label: '상단 영문 문구', type: 'text' },
-            { path: 'cover.titleLeft', label: '왼쪽 이름', type: 'text' },
+            { path: 'cover.titleLeft', label: '왼쪽 이름', type: 'text', help: '표지에 크게 보이는 이름입니다. (신랑·신부 탭의 이름과 따로 관리됩니다)' },
             { path: 'cover.titleRight', label: '오른쪽 이름', type: 'text' }
           ]
         },
@@ -73,7 +73,7 @@
           fields: [
             { path: 'couple.groom.name', label: '이름', type: 'text' },
             { path: 'couple.groom.nameEn', label: '영문 이름', type: 'text' },
-            { path: 'couple.groom.relation', label: '관계', type: 'text', help: '장남 / 차남 / 아들 …' },
+            { path: 'couple.groom.relation', label: '관계', type: 'text', help: '장남 / 차남 / 삼남 / 아들 … 인사말에 “아버지 · 어머니 의 [관계] 이름” 으로 표시됩니다.' },
             { path: 'couple.groom.phone', label: '연락처', type: 'tel' },
             { path: 'couple.groom.father.name', label: '아버지 성함', type: 'text' },
             { path: 'couple.groom.father.phone', label: '아버지 연락처', type: 'tel' },
@@ -785,9 +785,10 @@
     var note = $('#gateNote');
     var conf = DEFAULTS.firebase || {};
     if (!conf.apiKey || !conf.projectId) {
-      note.textContent = 'config.js 에 Firebase 설정이 없습니다. README 5번을 참고해 먼저 연결해 주세요.';
-      note.classList.add('is-error');
+      note.textContent = 'Firebase 연결이 필요합니다. 아래 설정 도우미를 따라 한 번만 연결해 주세요.';
       $('#loginSubmit').disabled = true;
+      $('#setup').hidden = false;
+      bindSetupHelper();
       return;
     }
 
@@ -816,6 +817,57 @@
         })
         .then(function () { button.disabled = false; });
     });
+  }
+
+  /* ---------------------------------------------------------
+   * Firebase 설정 도우미 (연결 전에만 표시)
+   * ------------------------------------------------------- */
+  var CONFIG_KEYS = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+
+  function bindSetupHelper() {
+    var toggle = $('#setupToggle');
+    var body = $('#setupBody');
+    toggle.addEventListener('click', function () {
+      body.hidden = !body.hidden;
+      toggle.textContent = body.hidden ? '설정 도우미 열기' : '설정 도우미 닫기';
+    });
+
+    $('#setupMake').addEventListener('click', function () {
+      var parsed = parseFirebaseConfig($('#setupInput').value);
+      if (!parsed.apiKey || !parsed.projectId) {
+        toast('apiKey 와 projectId 를 찾지 못했습니다. 코드를 통째로 붙여넣어 주세요');
+        return;
+      }
+      var lines = CONFIG_KEYS.map(function (key) {
+        return "    " + key + ": '" + (parsed[key] || '') + "'";
+      });
+      $('#setupOutput').textContent = '  firebase: {\n' + lines.join(',\n') + '\n  },';
+      $('#setupResult').hidden = false;
+    });
+
+    $('#setupCopy').addEventListener('click', function () {
+      var text = $('#setupOutput').textContent;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { toast('복사했습니다'); });
+      } else {
+        var area = document.createElement('textarea');
+        area.value = text;
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); toast('복사했습니다'); } catch (e) { toast('복사에 실패했습니다'); }
+        area.remove();
+      }
+    });
+  }
+
+  /** 붙여넣은 코드에서 필요한 값만 안전하게 뽑아냅니다. (실행하지 않습니다) */
+  function parseFirebaseConfig(text) {
+    var result = {};
+    CONFIG_KEYS.forEach(function (key) {
+      var match = new RegExp('["\']?' + key + '["\']?\\s*:\\s*["\']([^"\']*)["\']').exec(text);
+      if (match) result[key] = match[1];
+    });
+    return result;
   }
 
   function errorMessage(error) {

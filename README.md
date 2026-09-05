@@ -29,6 +29,10 @@ assets/audio/bgm.mp3    배경음악 (선택)
 
 ---
 
+> **처음 설정하시나요?**
+> 화면 하나하나 따라만 하면 되는 **[SETUP.md — Firebase 연결하기](SETUP.md)** 를 먼저 보세요. (10~15분, 무료)
+> 관리자 페이지(`/admin.html`)에 접속하면 같은 내용을 안내하는 **설정 도우미**도 있습니다.
+
 ## 1. Firebase 연결 (관리자 페이지 · 방명록 공용)
 
 1. [Firebase 콘솔](https://console.firebase.google.com) 에서 프로젝트를 만듭니다. (무료 Spark 요금제로 충분합니다)
