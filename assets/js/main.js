@@ -75,6 +75,57 @@
   function person(p) { return (p && p.late ? '(故) ' : '') + (p && p.name ? p.name : ''); }
 
   /* ---------------------------------------------------------
+   * 0-1. Firebase (방명록 · 관리자 설정 공용)
+   * ------------------------------------------------------- */
+  var FIREBASE_VERSION = '10.12.2';
+  var FB = { promise: null };
+
+  function hasFirebase() {
+    var conf = get('firebase', {});
+    return !!(conf && conf.apiKey && conf.projectId);
+  }
+
+  /** Firebase SDK 는 실제로 필요할 때 한 번만 내려받습니다. */
+  function firestore() {
+    if (FB.promise) return FB.promise;
+    var base = 'https://www.gstatic.com/firebasejs/' + FIREBASE_VERSION + '/';
+    FB.promise = Promise.all([
+      import(base + 'firebase-app.js'),
+      import(base + 'firebase-firestore.js')
+    ]).then(function (modules) {
+      var app = modules[0].initializeApp(get('firebase'));
+      return { api: modules[1], db: modules[1].getFirestore(app) };
+    });
+    return FB.promise;
+  }
+
+  /** 관리자 페이지에서 저장한 설정을 불러와 기본값 위에 덮어씁니다. */
+  function loadRemoteConfig() {
+    var store = get('store', {});
+    return firestore().then(function (s) {
+      return s.api.getDoc(s.api.doc(s.db, store.collection || 'site', store.doc || 'config'));
+    }).then(function (snapshot) {
+      return snapshot.exists() ? snapshot.data() : null;
+    });
+  }
+
+  /** 객체는 깊게, 배열·원시값은 통째로 덮어씁니다. */
+  function merge(base, extra) {
+    if (!extra || typeof extra !== 'object' || Array.isArray(extra)) return extra;
+    var out = Array.isArray(base) ? [] : Object.assign({}, base);
+    Object.keys(extra).forEach(function (key) {
+      var value = extra[key];
+      if (value && typeof value === 'object' && !Array.isArray(value) &&
+          base && typeof base[key] === 'object' && !Array.isArray(base[key])) {
+        out[key] = merge(base[key], value);
+      } else if (value !== undefined) {
+        out[key] = value;
+      }
+    });
+    return out;
+  }
+
+  /* ---------------------------------------------------------
    * 1. 메타 정보 · 단순 텍스트 바인딩
    * ------------------------------------------------------- */
   function renderMeta() {
@@ -368,7 +419,10 @@
     var full = [venue.address, venue.addressDetail].filter(Boolean).join(' ');
 
     var copyBtn = $('#copyAddress');
-    if (copyBtn) copyBtn.addEventListener('click', function () { copy(full, '주소가 복사되었습니다'); });
+    if (copyBtn && !copyBtn._bound) {
+      copyBtn._bound = true;
+      copyBtn.addEventListener('click', function () { copy(full, '주소가 복사되었습니다'); });
+    }
 
     var tel = $('#venueTel');
     if (tel) {
@@ -376,66 +430,204 @@
       else tel.remove();
     }
 
-    var apps = $('#mapApps');
-    if (apps) {
-      [['네이버 지도', venue.naverMapUrl], ['카카오맵', venue.kakaoMapUrl], ['티맵', venue.tmapUrl]].forEach(function (item) {
-        if (!item[1]) return;
-        var a = document.createElement('a');
-        a.className = 'mapapps__btn';
-        a.href = item[1];
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.textContent = item[0];
-        apps.appendChild(a);
-      });
-      if (!apps.children.length) apps.remove();
-    }
-
-    var list = $('#transportList');
-    if (list) {
-      (venue.transport || []).forEach(function (item) {
-        var li = el('li', 'info__item');
-        li.appendChild(el('p', 'info__title', item.title));
-        li.appendChild(el('p', 'info__desc', item.desc));
-        list.appendChild(li);
-      });
-      if (!list.children.length) list.remove();
-    }
-
+    renderMapApps(venue);
+    renderTransport(venue);
     renderMap(venue);
   }
 
-  /** 카카오맵 키가 있으면 실제 지도, 없으면 약도 이미지를 보여줍니다. */
+  function renderTransport(venue) {
+    var list = $('#transportList');
+    if (!list) return;
+    list.innerHTML = '';
+    (venue.transport || []).forEach(function (item) {
+      if (!item || !item.title) return;
+      var li = el('li', 'info__item');
+      li.appendChild(el('p', 'info__title', item.title));
+      li.appendChild(el('p', 'info__desc', item.desc || ''));
+      list.appendChild(li);
+    });
+    list.hidden = !list.children.length;
+  }
+
+  /* ---------------------------------------------------------
+   * 7-1. 지도 앱으로 열기
+   *      설치되어 있으면 앱, 아니면 웹 지도로 넘어갑니다.
+   * ------------------------------------------------------- */
+  function renderMapApps(venue) {
+    var wrap = $('#mapApps');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    var name = venue.name || '';
+    var lat = Number(venue.lat);
+    var lng = Number(venue.lng);
+    var hasPoint = !!(lat && lng);
+    var query = encodeURIComponent([name, venue.address].filter(Boolean).join(' '));
+
+    var apps = [
+      {
+        label: '카카오맵',
+        // 카카오맵은 웹 링크만으로 앱·웹 모두 열립니다.
+        web: hasPoint
+          ? 'https://map.kakao.com/link/map/' + encodeURIComponent(name) + ',' + lat + ',' + lng
+          : 'https://map.kakao.com/link/search/' + query
+      },
+      {
+        label: '네이버지도',
+        scheme: hasPoint
+          ? 'nmap://place?lat=' + lat + '&lng=' + lng + '&name=' + encodeURIComponent(name) +
+            '&appname=' + encodeURIComponent(location.hostname || 'invitation')
+          : null,
+        web: 'https://map.naver.com/p/search/' + query
+      },
+      {
+        label: '티맵',
+        scheme: hasPoint
+          ? 'tmap://route?goalname=' + encodeURIComponent(name) + '&goalx=' + lng + '&goaly=' + lat
+          : null,
+        notice: '티맵 앱이 설치되어 있지 않습니다'
+      }
+    ];
+
+    apps.forEach(function (app) {
+      var button = el('button', 'mapapps__btn', app.label);
+      button.type = 'button';
+      button.addEventListener('click', function () { openMapApp(app); });
+      wrap.appendChild(button);
+    });
+  }
+
+  function openMapApp(app) {
+    if (!app.scheme) {
+      if (app.web) window.open(app.web, '_blank', 'noopener');
+      else toast(app.notice || '지도를 열 수 없습니다');
+      return;
+    }
+
+    var moved = false;
+    var onHide = function () { moved = true; };
+    document.addEventListener('visibilitychange', onHide, { once: true });
+    window.addEventListener('pagehide', onHide, { once: true });
+
+    var frame = document.createElement('iframe');
+    frame.style.cssText = 'display:none';
+    frame.src = app.scheme;
+    document.body.appendChild(frame);
+    location.href = app.scheme;
+
+    setTimeout(function () {
+      document.removeEventListener('visibilitychange', onHide);
+      if (frame.parentNode) frame.parentNode.removeChild(frame);
+      if (moved || document.hidden) return;
+      if (app.web) window.open(app.web, '_blank', 'noopener');
+      else toast(app.notice || '앱을 열 수 없습니다');
+    }, 1400);
+  }
+
+  /* ---------------------------------------------------------
+   * 7-2. 지도
+   *      카카오 키가 있으면 카카오맵, 없으면 OpenStreetMap 을 씁니다.
+   * ------------------------------------------------------- */
   function renderMap(venue) {
     var canvas = $('#mapCanvas');
     if (!canvas) return;
+    canvas.innerHTML = '';
 
-    var fallback = function () {
-      canvas.innerHTML = '';
-      if (!venue.mapImage) { canvas.parentNode.remove(); return; }
-      var img = new Image();
-      img.src = venue.mapImage;
-      img.alt = venue.name + ' 약도';
-      img.loading = 'lazy';
-      canvas.appendChild(img);
-    };
+    var lat = Number(venue.lat);
+    var lng = Number(venue.lng);
+    if (!lat || !lng) { staticMap(canvas, venue); return; }
 
-    if (!venue.kakaoMapApiKey || !venue.lat || !venue.lng) { fallback(); return; }
+    if (venue.kakaoMapApiKey) {
+      kakaoMap(canvas, venue, lat, lng).catch(function () { osmMap(canvas, venue, lat, lng); });
+      return;
+    }
+    osmMap(canvas, venue, lat, lng).catch(function () { staticMap(canvas, venue); });
+  }
 
-    var script = document.createElement('script');
-    script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(venue.kakaoMapApiKey);
-    script.onerror = fallback;
-    script.onload = function () {
-      if (!window.kakao || !window.kakao.maps) { fallback(); return; }
-      window.kakao.maps.load(function () {
-        var center = new window.kakao.maps.LatLng(venue.lat, venue.lng);
-        var map = new window.kakao.maps.Map(canvas, { center: center, level: 3 });
-        new window.kakao.maps.Marker({ position: center, map: map });
-        map.setZoomable(false); /* 지도 안에서 페이지가 확대되지 않도록 */
-        map.setDraggable(false);
+  /** 지도를 불러오지 못했을 때의 대체 이미지 */
+  function staticMap(canvas, venue) {
+    canvas.innerHTML = '';
+    var img = new Image();
+    img.src = venue.mapImage || 'assets/images/map.svg';
+    img.alt = (venue.name || '예식장') + ' 약도';
+    img.loading = 'lazy';
+    canvas.appendChild(img);
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = function () { reject(new Error('script load failed: ' + src)); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function loadStyle(href) {
+    if (document.querySelector('link[href="' + href + '"]')) return;
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    document.head.appendChild(link);
+  }
+
+  var LEAFLET = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/';
+
+  function osmMap(canvas, venue, lat, lng) {
+    loadStyle(LEAFLET + 'leaflet.min.css');
+    var ready = window.L ? Promise.resolve() : loadScript(LEAFLET + 'leaflet.min.js');
+
+    return ready.then(function () {
+      if (!window.L) throw new Error('leaflet unavailable');
+      var map = window.L.map(canvas, {
+        center: [lat, lng],
+        zoom: 17,
+        zoomControl: true,
+        scrollWheelZoom: false,   /* 페이지 스크롤을 방해하지 않도록 */
+        attributionControl: true
       });
-    };
-    document.head.appendChild(script);
+      window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      window.L.marker([lat, lng], { icon: pinIcon(window.L), keyboard: false }).addTo(map);
+      setTimeout(function () { map.invalidateSize(); }, 200);
+      canvas._map = map;
+      return map;
+    });
+  }
+
+  function pinIcon(L) {
+    return L.divIcon({
+      className: 'map-pin',
+      iconSize: [30, 40],
+      iconAnchor: [15, 38],
+      html: '<svg viewBox="0 0 30 40" width="30" height="40" aria-hidden="true">' +
+            '<path d="M15 39C5.8 25.6 2 20.3 2 15a13 13 0 1 1 26 0c0 5.3-3.8 10.6-13 24z" fill="#A98A63"/>' +
+            '<circle cx="15" cy="14.5" r="5" fill="#FFFDF9"/></svg>'
+    });
+  }
+
+  function kakaoMap(canvas, venue, lat, lng) {
+    var src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' +
+              encodeURIComponent(venue.kakaoMapApiKey);
+    var ready = (window.kakao && window.kakao.maps) ? Promise.resolve() : loadScript(src);
+
+    return ready.then(function () {
+      return new Promise(function (resolve, reject) {
+        if (!window.kakao || !window.kakao.maps) { reject(new Error('kakao unavailable')); return; }
+        window.kakao.maps.load(function () {
+          var center = new window.kakao.maps.LatLng(lat, lng);
+          var map = new window.kakao.maps.Map(canvas, { center: center, level: 3 });
+          new window.kakao.maps.Marker({ position: center, map: map });
+          map.addControl(new window.kakao.maps.ZoomControl(), window.kakao.maps.ControlPosition.RIGHT);
+          canvas._map = map;
+          resolve(map);
+        });
+      });
+    });
   }
 
   /* ---------------------------------------------------------
@@ -515,15 +707,13 @@
    *      config.guestbook.firebase 설정이 있을 때만 동작합니다.
    * ------------------------------------------------------- */
   var GB = { api: null, col: null, docs: [], shown: 0, size: 5, targetId: null };
-  var FIREBASE_VERSION = '10.12.2';
 
   function renderGuestbook() {
     if (get('options.showGuestbook') === false) return;
 
     var section = $('#guestbookSection');
     var settings = get('guestbook', {});
-    var firebase = settings.firebase || {};
-    if (!section || !firebase.apiKey || !firebase.projectId) return;
+    if (!section || !hasFirebase()) return;
 
     GB.size = settings.pageSize || 5;
     lines($('#guestbookMessage'), settings.message || []);
@@ -536,7 +726,7 @@
 
     setBusy(list, '방명록을 불러오는 중입니다.');
 
-    connect(firebase, settings.collection || 'guestbook')
+    connect(settings.collection || 'guestbook')
       .then(loadEntries)
       .then(function () { drawEntries(list, more); })
       .catch(function (error) {
@@ -561,16 +751,10 @@
     list.appendChild(el('p', 'gb-empty', text));
   }
 
-  /** Firebase SDK 를 필요할 때만 내려받아 연결합니다. */
-  function connect(firebase, collectionName) {
-    var base = 'https://www.gstatic.com/firebasejs/' + FIREBASE_VERSION + '/';
-    return Promise.all([
-      import(base + 'firebase-app.js'),
-      import(base + 'firebase-firestore.js')
-    ]).then(function (modules) {
-      var app = modules[0].initializeApp(firebase);
-      GB.api = modules[1];
-      GB.col = GB.api.collection(GB.api.getFirestore(app), collectionName);
+  function connect(collectionName) {
+    return firestore().then(function (store) {
+      GB.api = store.api;
+      GB.col = store.api.collection(store.db, collectionName);
     });
   }
 
@@ -861,6 +1045,33 @@
     lockZoom();
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  /**
+   * 원격 설정이 있으면 먼저 받아온 뒤 화면을 그립니다.
+   * 네트워크가 느려도 3초 안에는 기본값으로 그리기 시작합니다.
+   */
+  function boot() {
+    if (!hasFirebase()) { init(); return; }
+
+    var splash = el('div', 'boot');
+    document.body.appendChild(splash);
+
+    var done = false;
+    var start = function () {
+      if (done) return;
+      done = true;
+      init();
+      splash.classList.add('is-out');
+      setTimeout(function () { splash.remove(); }, 600);
+    };
+
+    setTimeout(start, 3000);
+    loadRemoteConfig().then(function (remote) {
+      if (remote) CFG = merge(CFG, remote);
+    }).catch(function (error) {
+      console.warn('[config]', error);
+    }).then(start);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();

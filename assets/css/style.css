@@ -446,9 +446,25 @@ img{
   background:#EFEBE4;
 }
 .map__canvas{
+  position:relative;
+  z-index:0;              /* 지도 내부 z-index 가 시트 위로 올라오지 않도록 */
   width:100%;
   aspect-ratio:4/3;
 }
+.map__canvas .leaflet-container{
+  width:100%; height:100%;
+  background:#EFEBE4;
+  font-family:var(--sans);
+}
+.map__canvas .leaflet-control-attribution{
+  font-size:10px;
+  background:rgba(255,253,249,.8);
+}
+.map__canvas .leaflet-bar a{
+  color:var(--ink-soft);
+  border-bottom-color:var(--line);
+}
+.map-pin{ filter:drop-shadow(0 4px 8px rgba(60,50,40,.25)); }
 .map__canvas img{ width:100%; height:100%; object-fit:cover; }
 
 .addr{ margin-top:24px; }
@@ -838,6 +854,24 @@ img{
   transition:opacity .3s ease, transform .3s ease;
 }
 .toast.is-on{ opacity:1; transform:translate(-50%,0); }
+
+/* =========================================================
+   14-1. 첫 로딩 가림막 (원격 설정을 기다리는 동안)
+   ========================================================= */
+.boot{
+  position:fixed; inset:0; z-index:200;
+  background:var(--ivory);
+  display:grid; place-items:center;
+  transition:opacity .5s ease;
+}
+.boot::after{
+  content:'';
+  width:1px; height:40px;
+  background:linear-gradient(to bottom,var(--accent-soft),transparent);
+  animation:bootPulse 1.4s ease-in-out infinite;
+}
+@keyframes bootPulse{ 0%,100%{ opacity:.25; } 50%{ opacity:1; } }
+.boot.is-out{ opacity:0; pointer-events:none; }
 
 /* =========================================================
    15. 접근성 · 프린트
