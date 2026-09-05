@@ -83,7 +83,7 @@ window.INVITATION_CONFIG = {
       nameEn: 'Yuri',
       relation: '장녀',            // 장녀 / 차녀 / 딸 ...
       phone: '010-0000-0000',
-      father: { name: '임홍빈', phone: '010-0000-0000', late: false },
+      father: { name: '임흥빈', phone: '010-0000-0000', late: false },
       mother: { name: '김애란', phone: '010-0000-0000', late: false }
     }
   },
@@ -144,7 +144,7 @@ window.INVITATION_CONFIG = {
     ],
     bride: [
       { relation: '신부', name: '임유리', bank: '', number: '', kakaopay: '' },
-      { relation: '아버지', name: '임홍빈', bank: '', number: '', kakaopay: '' },
+      { relation: '아버지', name: '임흥빈', bank: '', number: '', kakaopay: '' },
       { relation: '어머니', name: '김애란', bank: '', number: '', kakaopay: '' }
     ]
   },
