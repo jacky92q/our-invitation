@@ -73,7 +73,7 @@ window.INVITATION_CONFIG = {
     groom: {
       name: '윤석호',
       nameEn: 'Seokho',
-      relation: '장남',            // 장남 / 차남 / 아들 ...
+      relation: '차남',            // 장남 / 차남 / 아들 ...
       phone: '010-0000-0000',
       father: { name: '윤재삼', phone: '010-0000-0000', late: false }, // late: true 면 이름 앞에 (故) 표시
       mother: { name: '김영애', phone: '010-0000-0000', late: false }
