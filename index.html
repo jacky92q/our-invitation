@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="format-detection" content="telephone=no" />
 <meta name="theme-color" content="#FBF8F3" />
-<title>민준 ♥ 서연 결혼합니다</title>
+<title>석호 ♥ 유리 결혼합니다</title>
 
 <!-- ─────────────────────────────────────────────────────────────
      카카오톡·문자로 링크를 보낼 때 보이는 정보입니다.
      크롤러는 자바스크립트를 실행하지 않으므로 반드시 아래 값을
      직접 수정해 주세요. (og:image 는 https:// 로 시작하는 전체 주소 권장)
      ───────────────────────────────────────────────────────────── -->
-<meta name="description" content="2026년 10월 17일 토요일 낮 12시 · 그랜드 컨벤션 5층 그레이스홀" />
+<meta name="description" content="2026년 10월 17일 토요일 낮 12시 · 양재 엘블레스" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="민준 ♥ 서연 결혼합니다" />
-<meta property="og:description" content="2026년 10월 17일 토요일 낮 12시&#10;그랜드 컨벤션 5층 그레이스홀" />
+<meta property="og:title" content="석호 ♥ 유리 결혼합니다" />
+<meta property="og:description" content="2026년 10월 17일 토요일 낮 12시&#10;양재 엘블레스" />
 <meta property="og:image" content="assets/images/cover.svg" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
@@ -143,6 +143,36 @@
       <div class="accordion reveal" data-delay="4" id="accountAccordion"></div>
     </section>
 
+    <!-- ══════════════ 방명록 ══════════════ -->
+    <section class="section section--guestbook" id="guestbookSection" hidden>
+      <p class="eyebrow reveal" data-bind="guestbook.label"></p>
+      <h2 class="heading reveal" data-delay="1" data-bind="guestbook.title"></h2>
+      <span class="rule reveal" data-delay="2"></span>
+      <p class="body-text reveal" data-delay="3" id="guestbookMessage"></p>
+
+      <form class="gb-form reveal" data-delay="4" id="guestbookForm" autocomplete="off">
+        <div class="gb-form__row">
+          <label class="gb-field">
+            <span class="gb-field__label">이름</span>
+            <input type="text" name="name" maxlength="10" placeholder="성함" required />
+          </label>
+          <label class="gb-field">
+            <span class="gb-field__label">비밀번호</span>
+            <input type="password" name="password" inputmode="numeric" maxlength="4" placeholder="숫자 4자리" required />
+          </label>
+        </div>
+        <label class="gb-field gb-field--full">
+          <span class="gb-field__label">축하 메시지</span>
+          <textarea name="message" maxlength="300" rows="3" placeholder="따뜻한 축하의 말씀을 남겨주세요" required></textarea>
+        </label>
+        <p class="gb-form__hint">비밀번호는 작성한 글을 지울 때 사용됩니다.</p>
+        <button type="submit" class="btn btn--solid gb-form__submit" id="guestbookSubmit">축하 메시지 남기기</button>
+      </form>
+
+      <div class="gb-list reveal" data-delay="5" id="guestbookList"></div>
+      <button type="button" class="btn btn--line gb-more" id="guestbookMore" hidden>더 보기</button>
+    </section>
+
     <!-- ══════════════ 마무리 ══════════════ -->
     <footer class="ending">
       <div class="ending__media reveal">
@@ -184,6 +214,21 @@
     <h3 class="sheet__title">연락하기</h3>
     <div class="sheet__body" id="contactList"></div>
     <button type="button" class="sheet__close" data-close>닫기</button>
+  </div>
+</div>
+
+<!-- 방명록 삭제 -->
+<div class="sheet" id="deleteSheet" hidden>
+  <div class="sheet__dim" data-close></div>
+  <div class="sheet__panel sheet__panel--sm" role="dialog" aria-modal="true" aria-label="방명록 삭제">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <h3 class="sheet__title">글 삭제하기</h3>
+    <p class="sheet__desc">작성할 때 입력한 비밀번호를 입력해 주세요.</p>
+    <form id="deleteForm" autocomplete="off">
+      <input class="gb-input" type="password" name="password" inputmode="numeric" maxlength="4" placeholder="숫자 4자리" required />
+      <button type="submit" class="btn btn--solid gb-form__submit">삭제하기</button>
+    </form>
+    <button type="button" class="sheet__close" data-close>취소</button>
   </div>
 </div>
 

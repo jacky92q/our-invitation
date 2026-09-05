@@ -511,6 +511,215 @@
   }
 
   /* ---------------------------------------------------------
+   * 8-1. 방명록 (Firebase Firestore)
+   *      config.guestbook.firebase 설정이 있을 때만 동작합니다.
+   * ------------------------------------------------------- */
+  var GB = { api: null, col: null, docs: [], shown: 0, size: 5, targetId: null };
+  var FIREBASE_VERSION = '10.12.2';
+
+  function renderGuestbook() {
+    if (get('options.showGuestbook') === false) return;
+
+    var section = $('#guestbookSection');
+    var settings = get('guestbook', {});
+    var firebase = settings.firebase || {};
+    if (!section || !firebase.apiKey || !firebase.projectId) return;
+
+    GB.size = settings.pageSize || 5;
+    lines($('#guestbookMessage'), settings.message || []);
+    section.hidden = false;
+
+    var form = $('#guestbookForm');
+    var list = $('#guestbookList');
+    var more = $('#guestbookMore');
+    var submit = $('#guestbookSubmit');
+
+    setBusy(list, '방명록을 불러오는 중입니다.');
+
+    connect(firebase, settings.collection || 'guestbook')
+      .then(loadEntries)
+      .then(function () { drawEntries(list, more); })
+      .catch(function (error) {
+        console.error('[guestbook]', error);
+        setBusy(list, '방명록을 불러오지 못했습니다.');
+      });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitEntry(form, submit, list, more);
+    });
+    more.addEventListener('click', function () {
+      GB.shown += GB.size;
+      drawEntries(list, more);
+    });
+
+    bindDeleteSheet(list, more);
+  }
+
+  function setBusy(list, text) {
+    list.innerHTML = '';
+    list.appendChild(el('p', 'gb-empty', text));
+  }
+
+  /** Firebase SDK 를 필요할 때만 내려받아 연결합니다. */
+  function connect(firebase, collectionName) {
+    var base = 'https://www.gstatic.com/firebasejs/' + FIREBASE_VERSION + '/';
+    return Promise.all([
+      import(base + 'firebase-app.js'),
+      import(base + 'firebase-firestore.js')
+    ]).then(function (modules) {
+      var app = modules[0].initializeApp(firebase);
+      GB.api = modules[1];
+      GB.col = GB.api.collection(GB.api.getFirestore(app), collectionName);
+    });
+  }
+
+  function loadEntries() {
+    var api = GB.api;
+    var query = api.query(GB.col, api.orderBy('createdAt', 'desc'), api.limit(200));
+    return api.getDocs(query).then(function (snapshot) {
+      GB.docs = snapshot.docs.map(function (doc) {
+        var data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || '',
+          message: data.message || '',
+          password: data.password || '',
+          createdAt: data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : null
+        };
+      });
+      GB.shown = GB.size;
+    });
+  }
+
+  function drawEntries(list, more) {
+    list.innerHTML = '';
+    if (!GB.docs.length) {
+      list.appendChild(el('p', 'gb-empty', '첫 번째 축하 메시지를 남겨주세요.'));
+      more.hidden = true;
+      return;
+    }
+
+    GB.docs.slice(0, GB.shown).forEach(function (entry) {
+      var item = el('div', 'gb-item');
+
+      var head = el('div', 'gb-item__head');
+      head.appendChild(el('p', 'gb-item__name', entry.name));
+      head.appendChild(el('p', 'gb-item__date', dateLabel(entry.createdAt)));
+      item.appendChild(head);
+      item.appendChild(el('p', 'gb-item__body', entry.message));
+
+      var del = el('button', 'gb-item__del');
+      del.type = 'button';
+      del.setAttribute('aria-label', entry.name + '님의 글 삭제');
+      del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+      del.addEventListener('click', function () { openDeleteSheet(entry.id); });
+      item.appendChild(del);
+
+      list.appendChild(item);
+    });
+
+    more.hidden = GB.shown >= GB.docs.length;
+  }
+
+  function dateLabel(date) {
+    var d = date || new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return d.getFullYear() + '. ' + pad(d.getMonth() + 1) + '. ' + pad(d.getDate());
+  }
+
+  /** 비밀번호는 원문 대신 해시로 저장합니다. */
+  function hash(text) {
+    if (!window.crypto || !window.crypto.subtle || !window.TextEncoder) {
+      return Promise.resolve('raw:' + text);
+    }
+    return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buffer) {
+      return Array.prototype.map.call(new Uint8Array(buffer), function (byte) {
+        return ('0' + byte.toString(16)).slice(-2);
+      }).join('');
+    });
+  }
+
+  function submitEntry(form, submit, list, more) {
+    var name = form.name.value.trim();
+    var message = form.message.value.trim();
+    var password = form.password.value.trim();
+
+    if (!name || !message) { toast('이름과 메시지를 입력해 주세요'); return; }
+    if (!/^[0-9]{4}$/.test(password)) { toast('비밀번호는 숫자 4자리로 입력해 주세요'); return; }
+    if (!GB.api) { toast('잠시 후 다시 시도해 주세요'); return; }
+
+    submit.disabled = true;
+    submit.textContent = '남기는 중…';
+
+    hash(password).then(function (hashed) {
+      return GB.api.addDoc(GB.col, {
+        name: name,
+        message: message,
+        password: hashed,
+        createdAt: GB.api.serverTimestamp()
+      }).then(function (ref) {
+        GB.docs.unshift({ id: ref.id, name: name, message: message, password: hashed, createdAt: new Date() });
+        GB.shown = Math.max(GB.shown, GB.size);
+        drawEntries(list, more);
+        form.reset();
+        toast('축하 메시지가 등록되었습니다');
+      });
+    }).catch(function (error) {
+      console.error('[guestbook]', error);
+      toast('등록에 실패했습니다. 잠시 후 다시 시도해 주세요');
+    }).then(function () {
+      submit.disabled = false;
+      submit.textContent = '축하 메시지 남기기';
+    });
+  }
+
+  function openDeleteSheet(id) {
+    GB.targetId = id;
+    var sheet = $('#deleteSheet');
+    sheet.hidden = false;
+    requestAnimationFrame(function () { sheet.classList.add('is-open'); });
+  }
+
+  function closeDeleteSheet() {
+    var sheet = $('#deleteSheet');
+    sheet.classList.remove('is-open');
+    setTimeout(function () { sheet.hidden = true; }, 400);
+    $('#deleteForm').reset();
+    GB.targetId = null;
+  }
+
+  function bindDeleteSheet(list, more) {
+    var sheet = $('#deleteSheet');
+    var form = $('#deleteForm');
+
+    $$('[data-close]', sheet).forEach(function (node) { node.addEventListener('click', closeDeleteSheet); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !sheet.hidden) closeDeleteSheet();
+    });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var id = GB.targetId;
+      var entry = GB.docs.filter(function (item) { return item.id === id; })[0];
+      if (!entry) { closeDeleteSheet(); return; }
+
+      hash(form.password.value.trim()).then(function (hashed) {
+        if (hashed !== entry.password) { toast('비밀번호가 일치하지 않습니다'); return; }
+        return GB.api.deleteDoc(GB.api.doc(GB.col, id)).then(function () {
+          GB.docs = GB.docs.filter(function (item) { return item.id !== id; });
+          drawEntries(list, more);
+          closeDeleteSheet();
+          toast('삭제되었습니다');
+        });
+      }).catch(function (error) {
+        console.error('[guestbook]', error);
+        toast('삭제에 실패했습니다');
+      });
+    });
+  }
+
+  /* ---------------------------------------------------------
    * 9. 마무리 · 공유
    * ------------------------------------------------------- */
   function renderEnding() {
@@ -645,6 +854,7 @@
     renderDday();
     renderVenue();
     renderAccounts();
+    renderGuestbook();
     renderEnding();
     renderBgm();
     observeReveals();
