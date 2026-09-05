@@ -279,7 +279,10 @@
     if (!track || !images.length) return;
 
     images.forEach(function (src, i) {
-      var item = el('div', 'gallery__item');
+      var item = el('button', 'gallery__item');
+      item.type = 'button';
+      item.setAttribute('aria-label', (i + 1) + '번째 사진 크게 보기');
+      item.addEventListener('click', function () { openViewer(i); });
       var img = new Image();
       img.src = src;
       img.alt = '웨딩 사진 ' + (i + 1);
@@ -334,6 +337,94 @@
     prev.addEventListener('click', function () { goTo(index - 1); });
     next.addEventListener('click', function () { goTo(index + 1); });
     sync();
+
+    setupViewer(images, goTo);
+  }
+
+  /* ---------------------------------------------------------
+   * 5-1. 사진 크게 보기
+   *      화면 크기에 맞춰 비율 그대로 보여줍니다. (확대 불가)
+   * ------------------------------------------------------- */
+  var VIEWER = { open: null };
+
+  function openViewer(index) {
+    if (VIEWER.open) VIEWER.open(index);
+  }
+
+  function setupViewer(images, syncGallery) {
+    var box = $('#viewer');
+    var track = $('#viewerTrack');
+    if (!box || !track) return;
+
+    var label = $('#viewerIndex');
+    var prev = $('#viewerPrev');
+    var next = $('#viewerNext');
+    var index = 0;
+
+    $('#viewerTotal').textContent = images.length;
+    track.innerHTML = '';
+
+    images.forEach(function (src, i) {
+      var slide = el('div', 'viewer__slide');
+      var img = new Image();
+      img.src = src;
+      img.alt = '웨딩 사진 ' + (i + 1);
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      slide.appendChild(img);
+      slide.addEventListener('click', close);
+      track.appendChild(slide);
+    });
+
+    function sync() {
+      label.textContent = index + 1;
+      prev.disabled = index === 0;
+      next.disabled = index === images.length - 1;
+    }
+
+    function goTo(i, smooth) {
+      index = Math.max(0, Math.min(images.length - 1, i));
+      track.scrollTo({ left: index * track.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+      sync();
+    }
+
+    function open(from) {
+      index = from || 0;
+      box.hidden = false;
+      document.body.classList.add('is-locked');
+      requestAnimationFrame(function () {
+        goTo(index, false);
+        box.classList.add('is-open');
+      });
+    }
+
+    function close() {
+      box.classList.remove('is-open');
+      document.body.classList.remove('is-locked');
+      setTimeout(function () { box.hidden = true; }, 320);
+      if (syncGallery) syncGallery(index);
+    }
+
+    var timer;
+    track.addEventListener('scroll', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        index = Math.round(track.scrollLeft / track.clientWidth);
+        sync();
+      }, 90);
+    }, { passive: true });
+
+    prev.addEventListener('click', function (e) { e.stopPropagation(); goTo(index - 1, true); });
+    next.addEventListener('click', function (e) { e.stopPropagation(); goTo(index + 1, true); });
+    $('#viewerClose').addEventListener('click', close);
+    document.addEventListener('keydown', function (e) {
+      if (box.hidden) return;
+      if (e.key === 'Escape') close();
+      if (e.key === 'ArrowLeft') goTo(index - 1, true);
+      if (e.key === 'ArrowRight') goTo(index + 1, true);
+    });
+
+    VIEWER.open = open;
   }
 
   /* ---------------------------------------------------------
