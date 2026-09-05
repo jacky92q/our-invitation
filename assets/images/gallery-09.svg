@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500" role="img" aria-label="09">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0%" stop-color="#EFE7E2"/>
+      <stop offset="100%" stop-color="#DCCFC7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1500" fill="url(#g)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="4.80">
+    <circle cx="600" cy="750" r="288"/>
+    <circle cx="600" cy="750" r="204" stroke-opacity="0.3"/>
+  </g>
+  <g fill="#6E6357" font-family="Georgia, 'Times New Roman', serif" text-anchor="middle">
+    <text x="600" y="768" font-size="62" letter-spacing="24">PHOTO</text>
+    <text x="600" y="852" font-size="43" letter-spacing="10" fill-opacity="0.7">09</text>
+  </g>
+</svg>

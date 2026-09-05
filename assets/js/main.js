@@ -1,0 +1,656 @@
+/* =============================================================
+ *  모바일 청첩장 - main.js
+ *  config.js 의 값을 읽어 화면을 그리고 상호작용을 붙입니다.
+ * ============================================================= */
+(function () {
+  'use strict';
+
+  var CFG = window.INVITATION_CONFIG || {};
+  var $ = function (sel, scope) { return (scope || document).querySelector(sel); };
+  var $$ = function (sel, scope) { return Array.prototype.slice.call((scope || document).querySelectorAll(sel)); };
+
+  /* ---------------------------------------------------------
+   * 유틸
+   * ------------------------------------------------------- */
+  function get(path, fallback) {
+    var value = path.split('.').reduce(function (obj, key) {
+      return (obj === undefined || obj === null) ? undefined : obj[key];
+    }, CFG);
+    if (value === undefined || value === null) return fallback !== undefined ? fallback : '';
+    return value;
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  /** 줄 배열을 <br> 로 이어 붙입니다. 빈 문자열은 문단 간격이 됩니다. */
+  function lines(target, arr) {
+    if (!target) return;
+    target.innerHTML = '';
+    (arr || []).forEach(function (line, i) {
+      if (line === '') {
+        target.appendChild(el('span', 'gap'));
+        return;
+      }
+      if (i > 0 && arr[i - 1] !== '') target.appendChild(document.createElement('br'));
+      target.appendChild(document.createTextNode(line));
+    });
+  }
+
+  function toast(message) {
+    var box = $('#toast');
+    if (!box) return;
+    box.textContent = message;
+    box.classList.add('is-on');
+    clearTimeout(box._timer);
+    box._timer = setTimeout(function () { box.classList.remove('is-on'); }, 1800);
+  }
+
+  function copy(text, message) {
+    var done = function () { toast(message || '복사되었습니다'); };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(text, done); });
+    } else {
+      legacyCopy(text, done);
+    }
+  }
+
+  function legacyCopy(text, done) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast('복사에 실패했습니다'); }
+    document.body.removeChild(area);
+  }
+
+  function telHref(number) { return 'tel:' + String(number).replace(/[^0-9+]/g, ''); }
+  function smsHref(number) { return 'sms:' + String(number).replace(/[^0-9+]/g, ''); }
+  function person(p) { return (p && p.late ? '(故) ' : '') + (p && p.name ? p.name : ''); }
+
+  /* ---------------------------------------------------------
+   * 1. 메타 정보 · 단순 텍스트 바인딩
+   * ------------------------------------------------------- */
+  function renderMeta() {
+    var title = get('meta.title', '모바일 청첩장');
+    var desc = get('meta.description');
+    var image = get('meta.ogImage');
+    var absolute = image ? new URL(image, location.href).href : '';
+
+    document.title = title;
+    var set = function (selector, value) {
+      var node = $(selector);
+      if (node) node.setAttribute('content', value);
+    };
+    set('meta[property="og:title"]', title);
+    set('meta[property="og:description"]', desc);
+    set('meta[property="og:image"]', absolute);
+  }
+
+  function renderBindings() {
+    $$('[data-bind]').forEach(function (node) {
+      node.textContent = get(node.getAttribute('data-bind'));
+    });
+  }
+
+  /* ---------------------------------------------------------
+   * 2. 표지
+   * ------------------------------------------------------- */
+  function renderCover() {
+    var img = $('#coverImg');
+    var src = get('cover.image');
+    if (!img || !src) { document.body.classList.add('is-ready'); return; }
+
+    img.alt = get('cover.titleLeft') + ' ' + get('cover.titleRight') + ' 웨딩 사진';
+    var ready = function () { document.body.classList.add('is-ready'); };
+    img.addEventListener('load', ready, { once: true });
+    img.addEventListener('error', ready, { once: true });
+    img.src = src;
+    if (img.complete) ready();
+    setTimeout(ready, 2500); // 이미지가 느려도 문구는 보이도록
+  }
+
+  /* ---------------------------------------------------------
+   * 3. 인사말 · 혼주
+   * ------------------------------------------------------- */
+  function renderGreeting() {
+    var poem = get('greeting.poem', []);
+    var poemBox = $('#greetingPoem');
+    if (poem.length) lines(poemBox, poem); else if (poemBox) poemBox.remove();
+    lines($('#greetingMessage'), get('greeting.message', []));
+
+    var wrap = $('#familyBlock');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    [['groom', 'couple.groom'], ['bride', 'couple.bride']].forEach(function (pair) {
+      var side = get(pair[1]);
+      if (!side || !side.name) return;
+
+      var row = el('div', 'family__row');
+      var parents = [person(side.father), person(side.mother)].filter(Boolean).join(' · ');
+
+      if (parents) {
+        var p = el('span', 'family__parents');
+        p.appendChild(document.createTextNode(parents));
+        row.appendChild(p);
+      }
+      if (side.relation) row.appendChild(el('span', 'family__rel', side.relation));
+      row.appendChild(el('span', 'family__name', side.name));
+      wrap.appendChild(row);
+    });
+  }
+
+  /* ---------------------------------------------------------
+   * 4. 연락처 시트
+   * ------------------------------------------------------- */
+  var ICON_CALL = 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1z';
+  var ICON_SMS = 'M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1z';
+
+  function contactRow(label, name, phone) {
+    var row = el('div', 'sheet__row');
+    var who = el('p', 'sheet__who', label);
+    who.appendChild(el('b', null, name));
+    row.appendChild(who);
+
+    var acts = el('div', 'sheet__acts');
+    [[telHref(phone), ICON_CALL, '전화하기'], [smsHref(phone), ICON_SMS, '문자하기']].forEach(function (item) {
+      var a = document.createElement('a');
+      a.className = 'sheet__act';
+      a.href = item[0];
+      a.setAttribute('aria-label', name + ' ' + item[2]);
+      a.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + item[1] + '"/></svg>';
+      acts.appendChild(a);
+    });
+    row.appendChild(acts);
+    return row;
+  }
+
+  function renderContact() {
+    if (get('options.showContact') === false) return;
+    var list = $('#contactList');
+    var wrap = $('#contactOpenWrap');
+    if (!list || !wrap) return;
+
+    var built = 0;
+    [['신랑측', 'couple.groom', 'GROOM'], ['신부측', 'couple.bride', 'BRIDE']].forEach(function (pair) {
+      var side = get(pair[1]);
+      if (!side) return;
+
+      var group = el('div', 'sheet__group');
+      group.appendChild(el('p', 'sheet__group-title', pair[2]));
+
+      var members = [
+        [pair[0] === '신랑측' ? '신랑' : '신부', side.name, side.phone],
+        ['아버지', person(side.father), side.father && side.father.phone],
+        ['어머니', person(side.mother), side.mother && side.mother.phone]
+      ];
+      members.forEach(function (m) {
+        if (!m[1] || !m[2]) return;
+        group.appendChild(contactRow(m[0], m[1], m[2]));
+        built++;
+      });
+      list.appendChild(group);
+    });
+
+    if (!built) return;
+    wrap.hidden = false;
+
+    var sheet = $('#contactSheet');
+    var open = function () {
+      sheet.hidden = false;
+      requestAnimationFrame(function () { sheet.classList.add('is-open'); });
+    };
+    var close = function () {
+      sheet.classList.remove('is-open');
+      setTimeout(function () { sheet.hidden = true; }, 400);
+    };
+    $('#contactOpen').addEventListener('click', open);
+    $$('[data-close]', sheet).forEach(function (node) { node.addEventListener('click', close); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !sheet.hidden) close();
+    });
+  }
+
+  /* ---------------------------------------------------------
+   * 5. 갤러리 (확대 없이 좌우 스와이프만)
+   * ------------------------------------------------------- */
+  function renderGallery() {
+    var images = get('gallery.images', []);
+    var track = $('#galleryTrack');
+    var thumbs = $('#galleryThumbs');
+    if (!track || !images.length) return;
+
+    images.forEach(function (src, i) {
+      var item = el('div', 'gallery__item');
+      var img = new Image();
+      img.src = src;
+      img.alt = '웨딩 사진 ' + (i + 1);
+      img.loading = i < 2 ? 'eager' : 'lazy';
+      img.decoding = 'async';
+      item.appendChild(img);
+      track.appendChild(item);
+
+      var btn = el('button', 'thumbs__btn' + (i === 0 ? ' is-active' : ''));
+      btn.type = 'button';
+      btn.setAttribute('aria-label', (i + 1) + '번째 사진 보기');
+      var thumb = new Image();
+      thumb.src = src;
+      thumb.alt = '';
+      thumb.loading = 'lazy';
+      btn.appendChild(thumb);
+      btn.addEventListener('click', function () { goTo(i); });
+      thumbs.appendChild(btn);
+    });
+
+    var GAP = 10; /* style.css 의 .gallery__track gap 과 같은 값 */
+    var index = 0;
+    var indexLabel = $('#galleryIndex');
+    var prev = $('#galleryPrev');
+    var next = $('#galleryNext');
+    $('#galleryTotal').textContent = images.length;
+
+    function goTo(i) {
+      index = Math.max(0, Math.min(images.length - 1, i));
+      track.scrollTo({ left: index * (track.clientWidth + GAP), behavior: 'smooth' });
+      sync();
+    }
+
+    function sync() {
+      indexLabel.textContent = index + 1;
+      prev.disabled = index === 0;
+      next.disabled = index === images.length - 1;
+      $$('.thumbs__btn', thumbs).forEach(function (btn, i) {
+        btn.classList.toggle('is-active', i === index);
+      });
+    }
+
+    var scrollTimer;
+    track.addEventListener('scroll', function () {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function () {
+        index = Math.round(track.scrollLeft / (track.clientWidth + GAP));
+        sync();
+      }, 90);
+    }, { passive: true });
+
+    prev.addEventListener('click', function () { goTo(index - 1); });
+    next.addEventListener('click', function () { goTo(index + 1); });
+    sync();
+  }
+
+  /* ---------------------------------------------------------
+   * 6. 달력 · 디데이
+   * ------------------------------------------------------- */
+  var DOW = ['일', '월', '화', '수', '목', '금', '토'];
+
+  function weddingDate() {
+    var date = get('wedding.date');
+    var time = get('wedding.time', '00:00');
+    if (!date) return null;
+    var d = new Date(date + 'T' + time + ':00');
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /** 12:00 → '오후 12시', 13:30 → '오후 1시 30분' */
+  function timeText(date) {
+    var hour = date.getHours();
+    var minute = date.getMinutes();
+    var half = hour < 12 ? '오전' : '오후';
+    var display = hour % 12 === 0 ? 12 : hour % 12;
+    return half + ' ' + display + '시' + (minute ? ' ' + minute + '분' : '');
+  }
+
+  function renderCalendar() {
+    var target = weddingDate();
+    var box = $('#calendar');
+    if (!target || !box || get('options.showCalendar') === false) return;
+
+    var year = target.getFullYear();
+    var month = target.getMonth();
+    var day = target.getDate();
+    var first = new Date(year, month, 1).getDay();
+    var total = new Date(year, month + 1, 0).getDate();
+
+    var grid = el('div', 'calendar__grid');
+    DOW.forEach(function (name, i) {
+      grid.appendChild(el('p', 'calendar__dow' + (i === 0 ? ' calendar__dow--sun' : ''), name));
+    });
+    for (var i = 0; i < first; i++) grid.appendChild(el('p', 'calendar__cell'));
+    for (var d = 1; d <= total; d++) {
+      var sunday = (first + d - 1) % 7 === 0;
+      var cell = el('p', 'calendar__cell' + (sunday ? ' calendar__cell--sun' : '') + (d === day ? ' calendar__cell--target' : ''));
+      cell.appendChild(el('span', null, String(d)));
+      grid.appendChild(cell);
+    }
+
+    box.appendChild(grid);
+    box.appendChild(el('p', 'calendar__time', DOW[target.getDay()] + '요일 ' + timeText(target)));
+    box.hidden = false;
+  }
+
+  function renderDday() {
+    var target = weddingDate();
+    var box = $('#dday');
+    if (!target || !box || get('options.showDday') === false) return;
+
+    var groom = get('couple.groom.name');
+    var bride = get('couple.bride.name');
+    var startOfDay = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+    var diff = Math.round((startOfDay(target) - startOfDay(new Date())) / 86400000);
+
+    box.innerHTML = '';
+    if (diff > 0) {
+      box.appendChild(document.createTextNode(groom + ', ' + bride + '의 결혼식이 '));
+      box.appendChild(el('b', null, diff + '일'));
+      box.appendChild(document.createTextNode(' 남았습니다.'));
+    } else if (diff === 0) {
+      box.appendChild(document.createTextNode('오늘은 '));
+      box.appendChild(el('b', null, groom + ' · ' + bride));
+      box.appendChild(document.createTextNode('의 결혼식입니다.'));
+    } else {
+      box.appendChild(document.createTextNode('함께해 주신 모든 분들께 감사드립니다.'));
+    }
+    box.hidden = false;
+  }
+
+  /* ---------------------------------------------------------
+   * 7. 오시는 길
+   * ------------------------------------------------------- */
+  function renderVenue() {
+    var venue = get('venue', {});
+    var full = [venue.address, venue.addressDetail].filter(Boolean).join(' ');
+
+    var copyBtn = $('#copyAddress');
+    if (copyBtn) copyBtn.addEventListener('click', function () { copy(full, '주소가 복사되었습니다'); });
+
+    var tel = $('#venueTel');
+    if (tel) {
+      if (venue.tel) tel.href = telHref(venue.tel);
+      else tel.remove();
+    }
+
+    var apps = $('#mapApps');
+    if (apps) {
+      [['네이버 지도', venue.naverMapUrl], ['카카오맵', venue.kakaoMapUrl], ['티맵', venue.tmapUrl]].forEach(function (item) {
+        if (!item[1]) return;
+        var a = document.createElement('a');
+        a.className = 'mapapps__btn';
+        a.href = item[1];
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = item[0];
+        apps.appendChild(a);
+      });
+      if (!apps.children.length) apps.remove();
+    }
+
+    var list = $('#transportList');
+    if (list) {
+      (venue.transport || []).forEach(function (item) {
+        var li = el('li', 'info__item');
+        li.appendChild(el('p', 'info__title', item.title));
+        li.appendChild(el('p', 'info__desc', item.desc));
+        list.appendChild(li);
+      });
+      if (!list.children.length) list.remove();
+    }
+
+    renderMap(venue);
+  }
+
+  /** 카카오맵 키가 있으면 실제 지도, 없으면 약도 이미지를 보여줍니다. */
+  function renderMap(venue) {
+    var canvas = $('#mapCanvas');
+    if (!canvas) return;
+
+    var fallback = function () {
+      canvas.innerHTML = '';
+      if (!venue.mapImage) { canvas.parentNode.remove(); return; }
+      var img = new Image();
+      img.src = venue.mapImage;
+      img.alt = venue.name + ' 약도';
+      img.loading = 'lazy';
+      canvas.appendChild(img);
+    };
+
+    if (!venue.kakaoMapApiKey || !venue.lat || !venue.lng) { fallback(); return; }
+
+    var script = document.createElement('script');
+    script.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(venue.kakaoMapApiKey);
+    script.onerror = fallback;
+    script.onload = function () {
+      if (!window.kakao || !window.kakao.maps) { fallback(); return; }
+      window.kakao.maps.load(function () {
+        var center = new window.kakao.maps.LatLng(venue.lat, venue.lng);
+        var map = new window.kakao.maps.Map(canvas, { center: center, level: 3 });
+        new window.kakao.maps.Marker({ position: center, map: map });
+        map.setZoomable(false); /* 지도 안에서 페이지가 확대되지 않도록 */
+        map.setDraggable(false);
+      });
+    };
+    document.head.appendChild(script);
+  }
+
+  /* ---------------------------------------------------------
+   * 8. 마음 전하실 곳
+   * ------------------------------------------------------- */
+  function renderAccounts() {
+    var section = $('#accountSection');
+    if (!section || get('options.showAccounts') === false) return;
+
+    var groom = get('accounts.groom', []);
+    var bride = get('accounts.bride', []);
+    if (!groom.length && !bride.length) return;
+
+    lines($('#accountMessage'), get('accounts.message', []));
+
+    var wrap = $('#accountAccordion');
+    [['신랑측 마음 전하실 곳', groom], ['신부측 마음 전하실 곳', bride]].forEach(function (pair) {
+      if (!pair[1].length) return;
+
+      var acc = el('div', 'acc');
+
+      var head = el('button', 'acc__head');
+      head.type = 'button';
+      head.appendChild(el('span', null, pair[0]));
+      head.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>');
+
+      var body = el('div', 'acc__body');
+      var inner = el('div', 'acc__inner');
+      var list = el('div', 'acc__list');
+
+      pair[1].forEach(function (item) {
+        if (!item.number) return;
+        var row = el('div', 'acc__row');
+
+        var left = el('div');
+        var who = el('p', 'acc__who', item.relation || '');
+        who.appendChild(el('b', null, item.name || ''));
+        left.appendChild(who);
+        left.appendChild(el('p', 'acc__bank', [item.bank, item.number].filter(Boolean).join(' ' )));
+        row.appendChild(left);
+
+        var right = el('div');
+        var btn = el('button', 'acc__copy', '복사');
+        btn.type = 'button';
+        btn.addEventListener('click', function () {
+          copy(item.bank + ' ' + item.number + ' ' + (item.name || ''), '계좌번호가 복사되었습니다');
+        });
+        right.appendChild(btn);
+
+        if (item.kakaopay) {
+          var pay = document.createElement('a');
+          pay.className = 'acc__pay';
+          pay.href = item.kakaopay;
+          pay.target = '_blank';
+          pay.rel = 'noopener noreferrer';
+          pay.textContent = 'pay';
+          right.appendChild(pay);
+        }
+        row.appendChild(right);
+        list.appendChild(row);
+      });
+
+      inner.appendChild(list);
+      body.appendChild(inner);
+      acc.appendChild(head);
+      acc.appendChild(body);
+      wrap.appendChild(acc);
+
+      head.addEventListener('click', function () { acc.classList.toggle('is-open'); });
+    });
+
+    if (wrap.children.length) section.hidden = false;
+  }
+
+  /* ---------------------------------------------------------
+   * 9. 마무리 · 공유
+   * ------------------------------------------------------- */
+  function renderEnding() {
+    var img = $('#endingImg');
+    var src = get('ending.image');
+    if (img) {
+      if (src) { img.src = src; img.alt = '웨딩 사진'; }
+      else img.parentNode.remove();
+    }
+    lines($('#endingMessage'), get('ending.message', []));
+
+    var linkBtn = $('#shareLink');
+    if (linkBtn) {
+      linkBtn.addEventListener('click', function () {
+        copy(location.href.split('#')[0], '링크가 복사되었습니다');
+      });
+    }
+    renderKakaoShare();
+  }
+
+  function renderKakaoShare() {
+    var key = get('share.kakaoJsKey');
+    var btn = $('#shareKakao');
+    if (!btn || !key) return;
+
+    var script = document.createElement('script');
+    script.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+    script.onload = function () {
+      if (!window.Kakao) return;
+      if (!window.Kakao.isInitialized()) window.Kakao.init(key);
+      btn.hidden = false;
+      btn.addEventListener('click', function () {
+        window.Kakao.Share.sendDefault({
+          objectType: 'feed',
+          content: {
+            title: get('share.kakaoTitle', get('meta.title')),
+            description: get('share.kakaoDescription', get('meta.description')),
+            imageUrl: new URL(get('meta.ogImage'), location.href).href,
+            link: { mobileWebUrl: location.href, webUrl: location.href }
+          },
+          buttons: [{
+            title: '청첩장 보기',
+            link: { mobileWebUrl: location.href, webUrl: location.href }
+          }]
+        });
+      });
+    };
+    document.head.appendChild(script);
+  }
+
+  /* ---------------------------------------------------------
+   * 10. 배경음악
+   * ------------------------------------------------------- */
+  function renderBgm() {
+    var bgm = get('bgm', {});
+    var btn = $('#bgmToggle');
+    if (!btn || !bgm.enabled || !bgm.src) return;
+
+    var audio = new Audio(bgm.src);
+    audio.loop = true;
+    audio.volume = .4;
+    btn.hidden = false;
+
+    var setState = function (playing) {
+      btn.classList.toggle('is-playing', playing);
+      btn.setAttribute('aria-label', playing ? '배경음악 끄기' : '배경음악 재생');
+    };
+
+    btn.addEventListener('click', function () {
+      if (audio.paused) audio.play().then(function () { setState(true); }).catch(function () {});
+      else { audio.pause(); setState(false); }
+    });
+
+    /* 자동재생은 브라우저가 막으므로 첫 터치에 한 번만 시도합니다. */
+    var tryOnce = function () {
+      audio.play().then(function () { setState(true); }).catch(function () {});
+      document.removeEventListener('touchstart', tryOnce);
+      document.removeEventListener('click', tryOnce);
+    };
+    document.addEventListener('touchstart', tryOnce, { once: true, passive: true });
+    document.addEventListener('click', tryOnce, { once: true });
+  }
+
+  /* ---------------------------------------------------------
+   * 11. 스크롤 등장 효과
+   * ------------------------------------------------------- */
+  function observeReveals() {
+    var nodes = $$('.reveal');
+    if (!('IntersectionObserver' in window)) {
+      nodes.forEach(function (n) { n.classList.add('is-in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-in');
+        io.unobserve(entry.target);
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: .12 });
+    nodes.forEach(function (n) { io.observe(n); });
+  }
+
+  /* ---------------------------------------------------------
+   * 12. 사진 확대 차단 (핀치 · 길게 누르기 · 드래그)
+   * ------------------------------------------------------- */
+  function lockZoom() {
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (type) {
+      document.addEventListener(type, function (e) { e.preventDefault(); }, { passive: false });
+    });
+    document.addEventListener('contextmenu', function (e) {
+      if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+    });
+    document.addEventListener('dragstart', function (e) {
+      if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+    });
+    document.addEventListener('touchmove', function (e) {
+      if (e.touches && e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+  }
+
+  /* ---------------------------------------------------------
+   * 실행
+   * ------------------------------------------------------- */
+  function init() {
+    renderMeta();
+    renderBindings();
+    renderCover();
+    renderGreeting();
+    renderContact();
+    renderGallery();
+    renderCalendar();
+    renderDday();
+    renderVenue();
+    renderAccounts();
+    renderEnding();
+    renderBgm();
+    observeReveals();
+    lockZoom();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();

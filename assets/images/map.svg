@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" role="img" aria-label="약도">
+  <rect width="1000" height="700" fill="#EFEBE4"/>
+  <g stroke="#E2DCD1" stroke-width="26" fill="none">
+    <path d="M-20 210 H1020"/><path d="M-20 500 H1020"/><path d="M300 -20 V720"/><path d="M720 -20 V720"/>
+  </g>
+  <g stroke="#E7E2D8" stroke-width="12" fill="none">
+    <path d="M-20 350 H1020"/><path d="M510 -20 V720"/><path d="M870 -20 V720"/>
+  </g>
+  <g fill="#E5E0D5">
+    <rect x="60" y="250" width="180" height="80" rx="6"/>
+    <rect x="360" y="250" width="110" height="80" rx="6"/>
+    <rect x="60" y="540" width="200" height="110" rx="6"/>
+    <rect x="770" y="80" width="180" height="100" rx="6"/>
+  </g>
+  <rect x="560" y="240" width="130" height="110" rx="6" fill="#DCD4C6"/>
+  <g transform="translate(625 230)">
+    <path d="M0 34 C-22 8 -30 -4 -30 -18 A30 30 0 0 1 30 -18 C30 -4 22 8 0 34 Z" fill="#B4886A"/>
+    <circle cx="0" cy="-18" r="11" fill="#FFFDF9"/>
+  </g>
+  <g font-family="Georgia, serif" fill="#8C8377" font-size="26" letter-spacing="4">
+    <text x="500" y="640" text-anchor="middle">MAP IMAGE</text>
+  </g>
+</svg>
